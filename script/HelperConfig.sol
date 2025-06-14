@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import { MockV3Aggregator } from "../src/test/mocks/MockV3Aggregator.sol";
 import { MockFunctionsRouter } from "../src/test/mocks/MockFunctionsRouter.sol";
@@ -47,6 +47,8 @@ contract HelperConfig {
     constructor() {
         chainIdToNetworkConfig[137] = getPolygonConfig();
         chainIdToNetworkConfig[80_002] = getAmoyConfig();
+        // chainIdToNetworkConfig[43_113] = getFujiConfig(); // Avalanche Fuji Testnet
+        // chainIdToNetworkConfig[43_114] = getAvalancheConfig(); // Avalanche Mainnet
         chainIdToNetworkConfig[31_337] = _setupAnvilConfig();
         activeNetworkConfig = chainIdToNetworkConfig[block.chainid];
     }
@@ -110,6 +112,42 @@ contract HelperConfig {
         // minimumRedemptionAmount: 30e6 // Please see your brokerage for min redemption amounts
         // https://alpaca.markets/support/crypto-wallet-faq
     }
+
+    /*
+    function getFujiConfig() internal pure returns (NetworkConfig memory config) {
+        config = NetworkConfig({
+            tslaPriceFeed: 0x7898AcCC83587C3c55116C5230c17a6d7c8cF485, // TSLA/USD on Fuji
+            usdcPriceFeed: 0x7898AcCC83587C3c55116C5230c17a6d7c8cF485, // Using same feed for demo
+            ethUsdPriceFeed: 0x86d67c3D38D2bCeE722E601025C25a575021c6EA, // ETH/USD on Fuji
+            functionsRouter: 0xA9d587a00A31A52Ed70D6026794a8FC5E2F5dCb0, // Chainlink Functions Router on Fuji
+            donId: 0x66756e2d6176616c616e6368652d66756a692d31000000000000000000000000, // DON ID for Fuji
+            subId: 0, // TODO: Create subscription
+            redemptionCoin: 0x5425890298aed601595a70AB815c96711a31Bc65, // USDC on Fuji
+            linkToken: 0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846, // LINK on Fuji
+            ccipRouter: 0xF694E193200268f9a4868e4Aa017A0118C9a8177, // CCIP Router on Fuji
+            ccipChainSelector: 14_767_482_510_784_806_043, // Fuji CCIP Chain Selector
+            secretVersion: 0, // fill in!
+            secretSlot: 0 // fill in!
+         });
+    }
+
+    function getAvalancheConfig() internal pure returns (NetworkConfig memory config) {
+        config = NetworkConfig({
+            tslaPriceFeed: 0x3CA13391E9fb38a75330fb28f8cc2eB3D9ceceED, // TSLA/USD on Avalanche
+            usdcPriceFeed: 0xF096872672F44d6EBA71458D74fe67F9a77a23B9, // USDC/USD on Avalanche
+            ethUsdPriceFeed: 0x976B3D034E162d8bD72D6b9C989d545b839003b0, // ETH/USD on Avalanche
+            functionsRouter: 0x9F82a6A0758517fD0bA7Ba9616d7a89C5320E8eE, // Chainlink Functions Router on Avalanche
+            donId: 0x66756e2d6176616c616e6368652d6d61696e6e65742d3100000000000000000000, // DON ID for Avalanche
+            subId: 0, // TODO: Create subscription
+            redemptionCoin: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E, // USDC on Avalanche
+            linkToken: 0x5947BB275c521040051D82396192181b413227A3, // LINK on Avalanche
+            ccipRouter: 0xF4c7E640EdA248ef95972845a62bdC74237805dB, // CCIP Router on Avalanche
+            ccipChainSelector: 6_433_500_567_565_415_381, // Avalanche CCIP Chain Selector
+            secretVersion: 0, // fill in!
+            secretSlot: 0 // fill in!
+         });
+    }
+    */
 
     function getAnvilEthConfig() internal view returns (NetworkConfig memory anvilNetworkConfig) {
         anvilNetworkConfig = NetworkConfig({

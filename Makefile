@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: all test clean deploy fund help install snapshot format anvil scopefile deploy-bridges
+.PHONY: all test clean deploy fund help install snapshot format anvil scopefile deploy-bridges deploy-fuji deploy-avalanche test-deploy
 
 DEFAULT_ANVIL_KEY := 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
@@ -45,3 +45,12 @@ setSupportedChain-sepolia :; cast send TOKEN_BRIDGE_ADDRESS "setSupportedChain(u
 
 # Multi-chain deployment doesn't work with account/sender yet :/ 
 deploy-bridges :; forge script script/DeployTokenBridges.s.sol --private-key ${PRIVATE_KEY} --verify --broadcast
+
+# Avalanche Fuji deployment
+deploy-fuji :; forge script script/DeploySimple.s.sol --rpc-url fuji --private-key ${PRIVATE_KEY} --broadcast --verify
+
+# Avalanche Mainnet deployment
+deploy-avalanche :; forge script script/DeploySimple.s.sol --rpc-url avalanche --private-key ${PRIVATE_KEY} --broadcast --verify
+
+# Just test the deployment locally
+test-deploy :; forge script script/DeploySimple.s.sol --rpc-url http://localhost:8545 --private-key ${DEFAULT_ANVIL_KEY} --broadcast

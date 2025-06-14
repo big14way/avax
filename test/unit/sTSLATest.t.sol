@@ -1,6 +1,6 @@
 // This a hackthon lol
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import { Test } from "forge-std/Test.sol";
 import { DeploySTsla, sTSLA } from "../../script/DeploySTsla.s.sol";
