@@ -4,155 +4,97 @@ import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite 
 import { formatEther, parseEther } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import toast from 'react-hot-toast';
-import { CONTRACT_CONFIG } from '@/config/contractConfig';
-import PriceFeedReader from '@/components/PriceFeedReader';
+import { CONTRACT_CONFIG, SAMPLE_PROPERTIES, PROPERTY_TYPES } from '@/config/contractConfig';
 
-type TabType = 'overview' | 'trade' | 'portfolio' | 'analytics';
+type TabType = 'overview' | 'properties' | 'portfolio' | 'analytics';
 
 const Home: React.FC = () => {
   const { address, isConnected } = useAccount();
   const [mounted, setMounted] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [ethAmount, setEthAmount] = useState<string>('');
-  const [tslaAmount, setTslaAmount] = useState<string>('');
-  const [redeemAmount, setRedeemAmount] = useState<string>('');
+  const [selectedProperty, setSelectedProperty] = useState<number>(0);
+  const [investmentAmount, setInvestmentAmount] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  const [livePrices, setLivePrices] = useState<{ tslaPrice: string; ethPrice: string }>({
-    tslaPrice: '0',
-    ethPrice: '0',
-  });
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Live contract reads with real data
-  const { data: userBalance, refetch: refetchBalance } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
+  // Read total supply of property tokens
+  const { data: totalSupply, refetch: refetchSupply } = useContractRead({
+    address: CONTRACT_CONFIG.PropertyToken.address as `0x${string}`,
+    abi: CONTRACT_CONFIG.PropertyToken.abi as any,
+    functionName: 'totalSupply',
+    watch: true,
+  });
+
+  // Read synthetic property token balance
+  const { data: syntheticBalance, refetch: refetchSynthetic } = useContractRead({
+    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
     functionName: 'balanceOf',
     args: [address],
     enabled: !!address,
     watch: true,
   });
 
-  const { data: healthFactor, refetch: refetchHealthFactor } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 'getHealthFactor',
-    args: [address],
-    enabled: !!address,
+  // Read synthetic property token name
+  const { data: syntheticName } = useContractRead({
+    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
+    functionName: 'name',
     watch: true,
   });
 
-  const { data: ethCollateral, refetch: refetchCollateral } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 's_ethCollateralPerUser',
-    args: [address],
-    enabled: !!address,
+  // Read synthetic property token symbol
+  const { data: syntheticSymbol } = useContractRead({
+    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
+    functionName: 'symbol',
     watch: true,
   });
 
-  const { data: tslaMinted, refetch: refetchMinted } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 's_tslaMintedPerUser',
-    args: [address],
-    enabled: !!address,
-    watch: true,
+  // Contract write for synthetic property investment
+  const { config: investConfig } = usePrepareContractWrite({
+    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
+    functionName: 'mint',
+    args: investmentAmount ? [parseEther(investmentAmount)] : undefined,
+    value: investmentAmount ? parseEther(investmentAmount) : undefined,
+    enabled: Boolean(investmentAmount && parseFloat(investmentAmount) > 0),
   });
 
-  // Real live price feeds from Chainlink
-  const { data: tslaPrice } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 'getUsdAmountFromTsla',
-    args: [parseEther('1')],
-    watch: true,
-  });
-
-  const { data: ethPrice } = useContractRead({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 'getUsdAmountFromEth',
-    args: [parseEther('1')],
-    watch: true,
-  });
-
-  // Contract writes
-  const { config: mintConfig } = usePrepareContractWrite({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 'depositAndmint',
-    args: tslaAmount ? [parseEther(tslaAmount)] : undefined,
-    value: ethAmount ? parseEther(ethAmount) : undefined,
-    enabled: Boolean(ethAmount && tslaAmount && parseFloat(ethAmount) > 0 && parseFloat(tslaAmount) > 0),
-  });
-
-  const { write: mint, isLoading: isMinting } = useContractWrite({
-    ...mintConfig,
+  const { write: invest, isLoading: isInvesting } = useContractWrite({
+    ...investConfig,
     onSuccess: () => {
-      toast.success('Position opened successfully! 🎉');
-      setEthAmount('');
-      setTslaAmount('');
+      toast.success('Investment successful! 🏡');
+      setInvestmentAmount('');
       setTimeout(() => {
-        refetchBalance();
-        refetchHealthFactor();
-        refetchCollateral();
-        refetchMinted();
+        refetchSynthetic();
+        refetchSupply();
       }, 2000);
     },
     onError: (error: Error) => {
-      toast.error(`Transaction failed: ${error.message}`);
-    },
-  });
-
-  const { config: burnConfig } = usePrepareContractWrite({
-    address: CONTRACT_CONFIG.sTSLA.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.sTSLA.abi,
-    functionName: 'redeemAndBurn',
-    args: redeemAmount ? [parseEther(redeemAmount)] : undefined,
-    enabled: Boolean(redeemAmount && parseFloat(redeemAmount) > 0),
-  });
-
-  const { write: burn, isLoading: isBurning } = useContractWrite({
-    ...burnConfig,
-    onSuccess: () => {
-      toast.success('Position closed successfully! 💰');
-      setRedeemAmount('');
-      setTimeout(() => {
-        refetchBalance();
-        refetchHealthFactor();
-        refetchCollateral();
-        refetchMinted();
-      }, 2000);
-    },
-    onError: (error: Error) => {
-      toast.error(`Transaction failed: ${error.message}`);
+      toast.error(`Investment failed: ${error.message}`);
     },
   });
 
   if (!mounted) return null;
 
-  const healthFactorFormatted = healthFactor ? Number(formatEther(healthFactor as unknown as bigint)).toFixed(2) : '0';
-  const isHealthy = parseFloat(healthFactorFormatted) > 1.0;
-  
-  // Use live prices from Chainlink feeds instead of broken contract calls
-  const tslaPriceFormatted = livePrices.tslaPrice !== '0' ? livePrices.tslaPrice : '0';
-  const ethPriceFormatted = livePrices.ethPrice !== '0' ? livePrices.ethPrice : '0';
-
   const tabs = [
-    { id: 'overview', name: 'Overview', description: 'Platform overview & live data' },
-    { id: 'trade', name: 'Trade', description: 'Open & close positions' },
-    { id: 'portfolio', name: 'Portfolio', description: 'Your positions & health' },
+    { id: 'overview', name: 'Overview', description: 'Platform overview & stats' },
+    { id: 'properties', name: 'Properties', description: 'Browse & invest in properties' },
+    { id: 'portfolio', name: 'Portfolio', description: 'Your real estate portfolio' },
     { id: 'analytics', name: 'Analytics', description: 'Market insights & data' },
   ];
+
+  const syntheticBalanceFormatted = syntheticBalance ? formatEther(syntheticBalance as unknown as bigint) : '0';
+  const totalSupplyFormatted = totalSupply ? (totalSupply as bigint).toString() : '0';
 
   return (
     <>
       <Head>
-        <title>DREMS - Decentralized Real Estate Marketplace</title>
+        <title>DREMS - Decentralized Real Estate Management System</title>
         <meta name="description" content="Professional DeFi platform for real estate tokenization with Chainlink integration" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -164,11 +106,11 @@ const Home: React.FC = () => {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-8">
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-gradient-to-br from-green-600 to-blue-600 rounded-lg flex items-center justify-center">
                     <span className="text-white font-bold text-sm">D</span>
                   </div>
                   <span className="text-xl font-bold text-gray-900">DREMS</span>
-                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Live</span>
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Live on Fuji</span>
                 </div>
                 
                 {/* Desktop Navigation */}
@@ -179,7 +121,7 @@ const Home: React.FC = () => {
                       onClick={() => setActiveTab(tab.id as TabType)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         activeTab === tab.id
-                          ? 'bg-blue-100 text-blue-700'
+                          ? 'bg-green-100 text-green-700'
                           : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                       }`}
                     >
@@ -201,49 +143,33 @@ const Home: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* Mobile Navigation */}
-          {mobileMenuOpen && (
-            <div className="md:hidden border-t border-gray-200 bg-white">
-              <div className="px-4 py-2 space-y-1">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveTab(tab.id as TabType);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div>{tab.name}</div>
-                    <div className="text-xs text-gray-500">{tab.description}</div>
-                  </button>
-                ))}
+            {/* Mobile Navigation */}
+            {mobileMenuOpen && (
+              <div className="md:hidden border-t border-gray-200 py-4">
+                <nav className="flex flex-col space-y-2">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id as TabType);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-green-100 text-green-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      {tab.name}
+                      <span className="block text-xs text-gray-500">{tab.description}</span>
+                    </button>
+                  ))}
+                </nav>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </header>
-
-        {/* Oracle Fix Notification */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 mb-4">
-            <div className="flex items-start space-x-3">
-              <div className="text-green-600 text-xl">🎉</div>
-              <div>
-                <h3 className="font-semibold text-green-900">Live Oracle Data Now Available!</h3>
-                <p className="text-green-700 text-sm mt-1">
-                  Now showing real-time Chainlink price feeds from Avalanche Fuji testnet. 
-                  LINK/USD is displayed as TSLA substitute, ETH/USD shows actual market prices.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -251,221 +177,163 @@ const Home: React.FC = () => {
           {activeTab === 'overview' && (
             <div className="space-y-8">
               {/* Hero Section */}
-              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-8 text-white">
-                <div className="relative z-10">
-                  <h1 className="text-4xl font-bold mb-4">
-                    Decentralized Real Estate Marketplace
-                  </h1>
-                  <p className="text-xl text-blue-100 mb-6 max-w-3xl">
-                    Tokenize real-world assets with Chainlink-powered price feeds, automated functions, and cross-chain capabilities.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-2xl font-bold">${tslaPriceFormatted}</div>
-                      <div className="text-blue-200">TSLA Price (Live)</div>
-                    </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-2xl font-bold">${ethPriceFormatted}</div>
-                      <div className="text-blue-200">ETH Price (Live)</div>
-                    </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-2xl font-bold">24/7</div>
-                      <div className="text-blue-200">Chainlink Automation</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
+              <div className="text-center space-y-4">
+                <h1 className="text-4xl font-bold text-gray-900">
+                  Decentralized Real Estate Management System
+                </h1>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  Tokenize, trade, and manage real estate investments with Chainlink-powered automation
+                </p>
               </div>
 
-              {/* Features Grid */}
+              {/* Contract Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-                    <span className="text-2xl">📊</span>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Property Tokens</p>
+                      <p className="text-2xl font-bold text-gray-900">{totalSupplyFormatted}</p>
+                    </div>
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                      <span className="text-green-600 text-xl">🏠</span>
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Live Price Feeds</h3>
-                  <p className="text-gray-600 text-sm">Real-time asset pricing powered by Chainlink oracles</p>
+                  <p className="text-xs text-gray-500 mt-2">Total tokenized properties</p>
                 </div>
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                    <span className="text-2xl">🏠</span>
+
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Your Balance</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {parseFloat(syntheticBalanceFormatted).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <span className="text-blue-600 text-xl">💎</span>
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Asset Tokenization</h3>
-                  <p className="text-gray-600 text-sm">Fractional ownership of real estate properties</p>
+                  <p className="text-xs text-gray-500 mt-2">{syntheticSymbol || 'sDREMS'} tokens</p>
                 </div>
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
-                    <span className="text-2xl">⚡</span>
+
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Automation</p>
+                      <p className="text-2xl font-bold text-green-600">Active</p>
+                    </div>
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                      <span className="text-green-600 text-xl">⚡</span>
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Smart Automation</h3>
-                  <p className="text-gray-600 text-sm">Automated liquidations and risk management</p>
+                  <p className="text-xs text-gray-500 mt-2">Chainlink Automation</p>
                 </div>
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mb-4">
-                    <span className="text-2xl">🌐</span>
+
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Network</p>
+                      <p className="text-2xl font-bold text-orange-600">Fuji</p>
+                    </div>
+                    <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <span className="text-orange-600 text-xl">🔗</span>
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Cross-Chain</h3>
-                  <p className="text-gray-600 text-sm">CCIP integration for multi-chain operations</p>
+                  <p className="text-xs text-gray-500 mt-2">Avalanche Testnet</p>
                 </div>
               </div>
 
-              {/* Live Price Feeds Section */}
-              <PriceFeedReader onPricesUpdate={setLivePrices} />
-
-              {/* Network Stats */}
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Network Statistics</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-600">$2.1M</div>
-                    <div className="text-gray-600">Total Value Locked</div>
+              {/* Contract Addresses */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Deployed Contracts</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-600">PropertyToken</p>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                      {CONTRACT_CONFIG.PropertyToken.address}
+                    </p>
                   </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-green-600">1,247</div>
-                    <div className="text-gray-600">Active Users</div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-600">SyntheticProperty</p>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                      {CONTRACT_CONFIG.SyntheticProperty.address}
+                    </p>
                   </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-purple-600">8,439</div>
-                    <div className="text-gray-600">Total Transactions</div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-600">PropertyAutomation</p>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                      {CONTRACT_CONFIG.PropertyAutomation.address}
+                    </p>
                   </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-orange-600">99.7%</div>
-                    <div className="text-gray-600">Uptime</div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-600">PropertyBridge</p>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                      {CONTRACT_CONFIG.PropertyBridge.address}
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Trade Tab */}
-          {activeTab === 'trade' && (
+          {/* Properties Tab */}
+          {activeTab === 'properties' && (
             <div className="space-y-8">
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Synthetic Asset Trading</h2>
-                
-                {!isConnected ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <span className="text-2xl">🔗</span>
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Connect Your Wallet</h3>
-                    <p className="text-gray-600 mb-6">Connect to Avalanche Fuji testnet to start trading</p>
-                    <ConnectButton />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Open Position */}
-                    <div className="space-y-6">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <h3 className="text-lg font-semibold text-gray-900">Open Position</h3>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Collateral Amount (AVAX)
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              value={ethAmount}
-                              onChange={(e) => setEthAmount(e.target.value)}
-                              placeholder="0.01"
-                              step="0.01"
-                              min="0"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
-                            />
-                            <div className="absolute right-3 top-3 text-gray-500 text-sm">AVAX</div>
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            sTSLA to Mint
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              value={tslaAmount}
-                              onChange={(e) => setTslaAmount(e.target.value)}
-                              placeholder="0.01"
-                              step="0.01"
-                              min="0"
-                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
-                            />
-                            <div className="absolute right-3 top-3 text-gray-500 text-sm">sTSLA</div>
-                          </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => mint?.()}
-                          disabled={!mint || isMinting || !ethAmount || !tslaAmount}
-                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                        >
-                          {isMinting ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                              <span>Opening Position...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Open Position</span>
-                              <span>→</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
+              <div className="text-center space-y-4">
+                <h2 className="text-3xl font-bold text-gray-900">Available Properties</h2>
+                <p className="text-lg text-gray-600">Invest in tokenized real estate with synthetic tokens</p>
+              </div>
 
-                    {/* Close Position */}
-                    <div className="space-y-6">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                        <h3 className="text-lg font-semibold text-gray-900">Close Position</h3>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            sTSLA Amount to Burn
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              value={redeemAmount}
-                              onChange={(e) => setRedeemAmount(e.target.value)}
-                              placeholder="0.01"
-                              step="0.01"
-                              min="0"
-                              max={userBalance ? formatEther(userBalance as unknown as bigint) : '0'}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent bg-gray-50"
-                            />
-                            <div className="absolute right-3 top-3 text-gray-500 text-sm">sTSLA</div>
-                          </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => burn?.()}
-                          disabled={!burn || isBurning || !redeemAmount}
-                          className="w-full bg-gradient-to-r from-red-600 to-pink-600 text-white py-4 rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                        >
-                          {isBurning ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                              <span>Closing Position...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Close Position</span>
-                              <span>→</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
+              {/* Sample Investment Interface */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Invest in Synthetic Property Tokens</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Investment Amount (AVAX)
+                      </label>
+                      <input
+                        type="number"
+                        value={investmentAmount}
+                        onChange={(e) => setInvestmentAmount(e.target.value)}
+                        placeholder="0.1"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={() => invest?.()}
+                      disabled={!invest || isInvesting || !isConnected}
+                      className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                    >
+                      {isInvesting ? 'Investing...' : 'Invest in Property Tokens'}
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">You will receive:</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {investmentAmount || '0'} {syntheticSymbol || 'sDREMS'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Token Name:</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {syntheticName || 'Synthetic DREMS Property'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Your Balance:</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {parseFloat(syntheticBalanceFormatted).toFixed(4)} {syntheticSymbol || 'sDREMS'}
+                      </span>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
@@ -473,67 +341,38 @@ const Home: React.FC = () => {
           {/* Portfolio Tab */}
           {activeTab === 'portfolio' && (
             <div className="space-y-8">
+              <div className="text-center space-y-4">
+                <h2 className="text-3xl font-bold text-gray-900">Your Portfolio</h2>
+                <p className="text-lg text-gray-600">Manage your real estate investments</p>
+              </div>
+
               {!isConnected ? (
-                <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 text-center">
-                  <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl">👛</span>
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-gray-400 text-2xl">👛</span>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Portfolio Unavailable</h3>
-                  <p className="text-gray-600 mb-6">Connect your wallet to view your positions</p>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Connect Your Wallet</h3>
+                  <p className="text-gray-600 mb-4">Connect your wallet to view your portfolio</p>
                   <ConnectButton />
                 </div>
               ) : (
-                <>
-                  {/* Portfolio Overview */}
-                  <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Positions</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6">
-                        <div className="text-sm text-blue-600 font-medium">sTSLA Balance</div>
-                        <div className="text-2xl font-bold text-blue-900">
-                          {userBalance ? Number(formatEther(userBalance as unknown as bigint)).toFixed(4) : '0.0000'}
-                        </div>
-                        <div className="text-sm text-blue-600">Synthetic TSLA</div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Holdings</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center py-3 border-b border-gray-100">
+                      <div>
+                        <p className="font-medium text-gray-900">{syntheticName || 'Synthetic DREMS Property'}</p>
+                        <p className="text-sm text-gray-600">Property Token Balance</p>
                       </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6">
-                        <div className="text-sm text-purple-600 font-medium">Collateral</div>
-                        <div className="text-2xl font-bold text-purple-900">
-                          {ethCollateral ? Number(formatEther(ethCollateral as unknown as bigint)).toFixed(4) : '0.0000'}
-                        </div>
-                        <div className="text-sm text-purple-600">AVAX Deposited</div>
-                      </div>
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6">
-                        <div className="text-sm text-green-600 font-medium">Total Minted</div>
-                        <div className="text-2xl font-bold text-green-900">
-                          {tslaMinted ? Number(formatEther(tslaMinted as unknown as bigint)).toFixed(4) : '0.0000'}
-                        </div>
-                        <div className="text-sm text-green-600">sTSLA Created</div>
+                      <div className="text-right">
+                        <p className="font-medium text-gray-900">
+                          {parseFloat(syntheticBalanceFormatted).toFixed(4)}
+                        </p>
+                        <p className="text-sm text-gray-600">{syntheticSymbol || 'sDREMS'}</p>
                       </div>
                     </div>
                   </div>
-
-                  {/* Health Factor */}
-                  <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Position Health</h2>
-                    <div className={`rounded-xl p-6 text-center ${
-                      isHealthy ? 'bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200' : 'bg-gradient-to-br from-red-50 to-pink-50 border border-red-200'
-                    }`}>
-                      <div className={`text-5xl font-bold mb-4 ${
-                        isHealthy ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {healthFactorFormatted}
-                      </div>
-                      <div className={`text-xl font-semibold mb-2 ${
-                        isHealthy ? 'text-green-800' : 'text-red-800'
-                      }`}>
-                        {isHealthy ? '✅ Healthy Position' : '⚠️ At Risk'}
-                      </div>
-                      <p className="text-gray-600">
-                        Health factor below 1.0 risks liquidation. Keep it above 1.2 for safety.
-                      </p>
-                    </div>
-                  </div>
-                </>
+                </div>
               )}
             </div>
           )}
@@ -541,110 +380,56 @@ const Home: React.FC = () => {
           {/* Analytics Tab */}
           {activeTab === 'analytics' && (
             <div className="space-y-8">
-              {/* Market Data */}
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Live Market Data</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-sm font-bold">T</span>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-gray-900">TSLA/USD</div>
-                          <div className="text-sm text-gray-600">Tesla Stock Price</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-blue-600">${tslaPriceFormatted}</div>
-                        <div className="text-sm text-green-600">Live Data</div>
-                      </div>
-                    </div>
+              <div className="text-center space-y-4">
+                <h2 className="text-3xl font-bold text-gray-900">Platform Analytics</h2>
+                <p className="text-lg text-gray-600">Real-time platform metrics and insights</p>
+              </div>
 
-                    <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-sm font-bold">E</span>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-gray-900">ETH/USD</div>
-                          <div className="text-sm text-gray-600">Ethereum Price</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-purple-600">${ethPriceFormatted}</div>
-                        <div className="text-sm text-green-600">Live Data</div>
-                      </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Stats</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Properties:</span>
+                      <span className="font-medium">{totalSupplyFormatted}</span>
                     </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Protocol Metrics</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Oracle Updates (24h)</span>
-                        <span className="font-semibold">1,247</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Active Positions</span>
-                        <span className="font-semibold">342</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Avg Health Factor</span>
-                        <span className="font-semibold text-green-600">2.34</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Liquidations (24h)</span>
-                        <span className="font-semibold">3</span>
-                      </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Active Automation:</span>
+                      <span className="font-medium text-green-600">✓ Active</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Network:</span>
+                      <span className="font-medium">Avalanche Fuji</span>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Contract Information */}
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Contract Information</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Deployment Details</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-sm text-gray-600">Contract Address</div>
-                        <div className="font-mono text-sm bg-gray-100 p-2 rounded">
-                          {CONTRACT_CONFIG.sTSLA.address}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Network</div>
-                        <div className="font-semibold">Avalanche Fuji Testnet</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Chain ID</div>
-                        <div className="font-semibold">43113</div>
-                      </div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Activity</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Token Balance:</span>
+                      <span className="font-medium">{parseFloat(syntheticBalanceFormatted).toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Wallet:</span>
+                      <span className="font-medium text-xs">
+                        {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not connected'}
+                      </span>
                     </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Chainlink Integration</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">Price Feeds Active</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">Automation Running</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">Functions Available</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">CCIP Ready</span>
-                      </div>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Contract Info</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-gray-600 block text-sm">Synthetic Token:</span>
+                      <span className="font-medium text-xs">{syntheticSymbol || 'sDREMS'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 block text-sm">Token Name:</span>
+                      <span className="font-medium text-xs">{syntheticName || 'Loading...'}</span>
                     </div>
                   </div>
                 </div>
@@ -652,39 +437,6 @@ const Home: React.FC = () => {
             </div>
           )}
         </main>
-
-        {/* Footer */}
-        <footer className="bg-white border-t border-gray-200 mt-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex flex-col md:flex-row justify-between items-center">
-              <div className="flex items-center space-x-2 mb-4 md:mb-0">
-                <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">D</span>
-                </div>
-                <span className="font-semibold text-gray-900">DREMS Platform</span>
-              </div>
-              <div className="flex items-center space-x-6 text-sm text-gray-600">
-                <a 
-                  href={`https://testnet.snowtrace.io/address/${CONTRACT_CONFIG.sTSLA.address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-blue-600 transition-colors"
-                >
-                  View Contract
-                </a>
-                <a 
-                  href="https://faucet.avax.network/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-blue-600 transition-colors"
-                >
-                  Get Testnet AVAX
-                </a>
-                <span>Powered by Chainlink</span>
-              </div>
-            </div>
-          </div>
-        </footer>
       </div>
     </>
   );
