@@ -519,14 +519,13 @@ contract PropertyToken is FunctionsClient, ConfirmedOwner, ERC20, Pausable, Reen
      */
     function _distributeRent(address propertyAddr) internal {
         RentalData storage rental = propertyRentals[propertyAddr];
-        Property storage property = properties[propertyAddr];
         
         if (rental.availableForDistribution == 0) {
             return;
         }
 
-        uint256 platformFee = (rental.availableForDistribution * PLATFORM_FEE) / YIELD_PRECISION;
-        uint256 distributableRent = rental.availableForDistribution - platformFee;
+        // uint256 platformFee = (rental.availableForDistribution * PLATFORM_FEE) / YIELD_PRECISION; // Unused for now
+        // uint256 distributableRent = rental.availableForDistribution - platformFee; // Unused for now
         
         // Mark rent as distributed
         rental.availableForDistribution = 0;
@@ -534,6 +533,7 @@ contract PropertyToken is FunctionsClient, ConfirmedOwner, ERC20, Pausable, Reen
         
         // Note: In a production system, we would iterate through token holders
         // For this implementation, we'll use a claim-based system for gas efficiency
+        // The distributableRent would be used for actual distribution logic
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -576,5 +576,40 @@ contract PropertyToken is FunctionsClient, ConfirmedOwner, ERC20, Pausable, Reen
         returns (uint256) 
     {
         return userPropertyTokens[user][propertyAddr];
+    }
+
+    /**
+     * @notice Get current property value for synthetic contracts
+     * @dev Used by SyntheticProperty contract to get current property prices
+     * @return Current property value in USD (18 decimals)
+     */
+    function getCurrentPropertyValue() external view returns (uint256) {
+        // For main property token, return the weighted average of all properties
+        if (activeProperties.length == 0) {
+            return 1e18; // $1 default
+        }
+        
+        uint256 totalValue = 0;
+        uint256 totalSupply = 0;
+        
+        for (uint256 i = 0; i < activeProperties.length; i++) {
+            Property storage property = properties[activeProperties[i]];
+            if (property.isActive) {
+                totalValue += property.currentValue;
+                totalSupply += property.totalTokens;
+            }
+        }
+        
+        return totalSupply > 0 ? (totalValue * PRECISION) / totalSupply : 1e18;
+    }
+
+    /**
+     * @notice Get current value of a specific property
+     * @param propertyAddr The property address
+     * @return Current property value in USD (18 decimals)
+     */
+    function getPropertyCurrentValue(address propertyAddr) external view returns (uint256) {
+        Property storage property = properties[propertyAddr];
+        return property.isActive ? property.currentValue : 0;
     }
 }

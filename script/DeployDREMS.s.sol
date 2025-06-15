@@ -6,6 +6,7 @@ import { console } from "forge-std/console.sol";
 import { PropertyToken } from "../src/PropertyToken.sol";
 import { PropertyAutomation } from "../src/PropertyAutomation.sol";
 import { PropertyBridge } from "../src/PropertyBridge.sol";
+import { SyntheticProperty } from "../src/SyntheticProperty.sol";
 
 /**
  * @title DeployDREMS
@@ -53,6 +54,7 @@ contract DeployDREMS is Script {
     PropertyToken public propertyToken;
     PropertyAutomation public propertyAutomation;
     PropertyBridge public propertyBridge;
+    SyntheticProperty public syntheticProperty;
     
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -78,6 +80,7 @@ contract DeployDREMS is Script {
         deployPropertyToken(config);
         deployPropertyAutomation();
         deployPropertyBridge(config);
+        deploySyntheticProperty(config);
         
         // Configure contracts
         configureContracts(config);
@@ -133,11 +136,24 @@ contract DeployDREMS is Script {
         console.log("PropertyBridge deployed at:", address(propertyBridge));
     }
     
+    function deploySyntheticProperty(NetworkConfig memory config) internal {
+        console.log("Deploying SyntheticProperty...");
+        
+        syntheticProperty = new SyntheticProperty(
+            config.ethUsdFeed,
+            address(propertyToken),
+            "Synthetic DREMS Property",
+            "sDREMS"
+        );
+        
+        console.log("SyntheticProperty deployed at:", address(syntheticProperty));
+    }
+    
     /*//////////////////////////////////////////////////////////////
                         CONTRACT CONFIGURATION
     //////////////////////////////////////////////////////////////*/
     
-    function configureContracts(NetworkConfig memory config) internal {
+    function configureContracts(NetworkConfig memory /* config */) internal {
         console.log("Configuring contracts...");
         
         // Configure cross-chain settings for PropertyBridge
@@ -149,7 +165,25 @@ contract DeployDREMS is Script {
                 address(0), // PropertyToken address on Sepolia (to be updated)
                 200000 // Gas limit
             );
+        } else if (block.chainid == 43113) { // Avalanche Fuji
+            // Configure Sepolia as destination for cross-chain
+            propertyBridge.configureChain(
+                16015286601757825753, // Sepolia chain selector
+                address(0), // PropertyBridge address on Sepolia (to be updated)
+                address(0), // PropertyToken address on Sepolia (to be updated)
+                200000 // Gas limit
+            );
         }
+        
+        // Configure SyntheticProperty with supported properties
+        // Add PropertyToken as a supported property for synthetic trading
+        syntheticProperty.addSupportedProperty(
+            address(propertyToken),
+            5000, // 50% liquidation threshold (200% collateral required)
+            300,  // 3x maximum leverage
+            100,  // 1% minting fee
+            100e18 // $100 minimum position
+        );
         
         console.log("Contracts configured successfully");
     }
@@ -263,6 +297,20 @@ contract DeployDREMS is Script {
             ccipRouter: 0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165,
             chainSelector: 3478487238524512106
         });
+
+        // Avalanche Fuji Testnet
+        networkConfigs[43113] = NetworkConfig({
+            subId: 1, // Replace with your actual subscription ID
+            functionsRouter: 0xA9d587a00A31A52Ed70D6026794a8FC5E2F5dCb0, // Functions Router on Fuji
+            donId: 0x66756e2d6176616c616e6368652d66756a692d31000000000000000000000000, // fun-avalanche-fuji-1
+            ethUsdFeed: 0x86d67c3D38D2bCeE722E601025C25a575021c6EA, // ETH/USD on Fuji
+            usdcUsdFeed: 0x86d67c3D38D2bCeE722E601025C25a575021c6EA, // Using ETH/USD as substitute for USDC/USD
+            redemptionCoin: 0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846, // LINK on Fuji
+            secretVersion: 1,
+            secretSlot: 0,
+            ccipRouter: 0xF694E193200268f9a4868e4Aa017A0118C9a8177, // CCIP Router on Fuji
+            chainSelector: 14767482510784806043 // Avalanche Fuji chain selector
+        });
     }
     
     /*//////////////////////////////////////////////////////////////
@@ -275,6 +323,7 @@ contract DeployDREMS is Script {
         console.log("PropertyToken:     ", address(propertyToken));
         console.log("PropertyAutomation:", address(propertyAutomation));
         console.log("PropertyBridge:    ", address(propertyBridge));
+        console.log("SyntheticProperty: ", address(syntheticProperty));
         console.log("===============================================");
         console.log("Chain ID:          ", block.chainid);
         console.log("Deployer:          ", msg.sender);
@@ -299,10 +348,11 @@ contract DeployDREMS is Script {
     function verifyDeployment() external view returns (bool) {
         return address(propertyToken) != address(0) && 
                address(propertyAutomation) != address(0) && 
-               address(propertyBridge) != address(0);
+               address(propertyBridge) != address(0) &&
+               address(syntheticProperty) != address(0);
     }
     
-    function getDeployedAddresses() external view returns (address, address, address) {
-        return (address(propertyToken), address(propertyAutomation), address(propertyBridge));
+    function getDeployedAddresses() external view returns (address, address, address, address) {
+        return (address(propertyToken), address(propertyAutomation), address(propertyBridge), address(syntheticProperty));
     }
 } 
