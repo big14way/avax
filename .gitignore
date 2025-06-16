@@ -17,4 +17,5 @@ node_modules/
 broadcast/
 etherscan.json
 .DS_Store
-.script.md
+.script.md/frontend/.next/
+/frontend/.env.local

@@ -15,8 +15,9 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/Ag
 library OracleLib {
     error OracleLib__StalePrice();
 
-    // @audit we know that this timeout is not acceptable for most chains
-    uint256 private constant TIMEOUT = 3 hours;
+    // @audit Extended timeout for Avalanche Fuji testnet compatibility
+    // @audit Original: 3 hours - too strict for testnet price feeds
+    uint256 private constant TIMEOUT = 24 hours; // Extended from 3 hours for testing
 
     // @audit we are not checking any sequencers here
     // @audit we are also not checking for a min or max price

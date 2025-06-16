@@ -241,8 +241,9 @@ contract PropertyBridge is CCIPReceiver, OwnerIsCreator, ReentrancyGuard, Pausab
         // Transfer tokens from user to bridge
         IERC20(propertyToken).transferFrom(msg.sender, address(this), amount);
 
-        // Get property details for cross-chain verification
-        PropertyToken.Property memory property = i_propertyToken.getProperty(propertyToken);
+        // For DREMS token bridging, we don't need specific property details
+        // Create a generic property ID for the main token
+        bytes32 genericPropertyId = keccak256(abi.encodePacked("DREMS_MAIN_TOKEN", propertyToken));
         
         // Create transfer message
         PropertyTransferMessage memory transferMsg = PropertyTransferMessage({
@@ -250,7 +251,7 @@ contract PropertyBridge is CCIPReceiver, OwnerIsCreator, ReentrancyGuard, Pausab
             recipient: receiver,
             amount: amount,
             originalProperty: propertyToken,
-            propertyId: keccak256(abi.encodePacked(property.propertyId))
+            propertyId: genericPropertyId
         });
 
         // Create CCIP message

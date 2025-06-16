@@ -1,5 +1,5 @@
 import React from 'react';
-import { useContractRead } from 'wagmi';
+import { useContractRead, useReadContract } from 'wagmi';
 
 // Avalanche Fuji Testnet Chainlink Price Feed Addresses
 const PRICE_FEEDS = {
@@ -43,7 +43,6 @@ export const PriceFeedReader: React.FC<PriceFeedReaderProps> = ({ onPricesUpdate
     address: PRICE_FEEDS.LINK_USD as `0x${string}`,
     abi: AGGREGATOR_V3_ABI,
     functionName: 'latestRoundData',
-    watch: true,
   });
 
   // Read ETH/USD price
@@ -51,7 +50,6 @@ export const PriceFeedReader: React.FC<PriceFeedReaderProps> = ({ onPricesUpdate
     address: PRICE_FEEDS.ETH_USD as `0x${string}`,
     abi: AGGREGATOR_V3_ABI,
     functionName: 'latestRoundData',
-    watch: true,
   });
 
   // Update parent component when prices change

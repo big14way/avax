@@ -121,4 +121,16 @@ For the best development experience:
 4. **Monitor Health** - Keep track of your collateralization ratio
 5. **Burn & Redeem** - Burn sTSLA tokens to get your ETH collateral back
 
-Built with ❤️ for the Chainlink Hackathon 
+## 📚 Documentation
+
+### Architecture & Design
+- [System Architecture](./ARCHITECTURE.md) - Comprehensive technical architecture
+- [User Journey Guide](./docs/USER_JOURNEY.md) - Detailed user experience flows
+- [Performance Metrics](./docs/PERFORMANCE_METRICS.md) - System performance benchmarks
+
+### Development Resources
+- [Component Documentation](./components/) - Individual component guides
+- [Contract Integration](./contracts/config.ts) - Smart contract configurations
+- [Testing Strategy](./docs/) - Testing frameworks and methodologies
+
+Built with ❤️ for the Chainlink Hackathon 2024 

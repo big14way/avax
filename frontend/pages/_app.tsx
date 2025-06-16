@@ -1,31 +1,25 @@
+'use client';
+
 import '@/styles/globals.css';
+import '@rainbow-me/rainbowkit/styles.css';
 import type { AppProps } from 'next/app';
-import { WagmiConfig, createConfig, configureChains } from 'wagmi';
-import { avalancheFuji } from 'viem/chains';
-import { publicProvider } from 'wagmi/providers/public';
-import { getDefaultWallets, RainbowKitProvider } from '@rainbow-me/rainbowkit';
+import { WagmiProvider } from 'wagmi';
+import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import Head from 'next/head';
-import { SUPPORTED_CHAINS, RAINBOWKIT_CONFIG } from '@/config/web3Config';
+import { avalancheFuji } from 'wagmi/chains';
+import { http } from 'wagmi';
 
-import '@rainbow-me/rainbowkit/styles.css';
-
-// Configure chains and providers
-const { chains, publicClient } = configureChains(SUPPORTED_CHAINS, [publicProvider()]);
-
-// Configure wallets
-const { connectors } = getDefaultWallets({
-  appName: RAINBOWKIT_CONFIG.appName,
-  projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'demo',
-  chains,
-});
-
-// Create wagmi config
-const wagmiConfig = createConfig({
-  autoConnect: true,
-  connectors,
-  publicClient,
+// Create wagmi config with Wagmi V2
+const config = getDefaultConfig({
+  appName: 'DREMS Platform',
+  projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "demo-project-id",
+  chains: [avalancheFuji],
+  transports: {
+    [avalancheFuji.id]: http('https://api.avax-test.network/ext/bc/C/rpc'),
+  },
+  ssr: true,
 });
 
 // Create query client
@@ -42,11 +36,8 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       
       <QueryClientProvider client={queryClient}>
-        <WagmiConfig config={wagmiConfig}>
-          <RainbowKitProvider 
-            chains={chains}
-            appInfo={RAINBOWKIT_CONFIG}
-          >
+        <WagmiProvider config={config}>
+          <RainbowKitProvider>
             <Component {...pageProps} />
             <Toaster 
               position="top-right"
@@ -73,7 +64,7 @@ export default function App({ Component, pageProps }: AppProps) {
               }}
             />
           </RainbowKitProvider>
-        </WagmiConfig>
+        </WagmiProvider>
       </QueryClientProvider>
     </>
   );

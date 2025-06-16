@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite } from 'wagmi';
-import { formatEther, parseEther } from 'viem';
+import { useAccount, useReadContract } from 'wagmi';
+import { formatEther } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import toast from 'react-hot-toast';
-import { CONTRACT_CONFIG, SAMPLE_PROPERTIES, PROPERTY_TYPES } from '@/config/contractConfig';
+import { CONTRACT_CONFIG } from '../contracts/config';
+import PropertyInvestment from '@/components/PropertyInvestment';
+import PropertyPortfolio from '@/components/PropertyPortfolio';
+import PropertyBridge from '@/components/PropertyBridge';
+import BridgeHistory from '@/components/BridgeHistory';
+import PropertyAutomationStatus from '@/components/PropertyAutomationStatus';
+import ChainlinkPriceFeeds from '@/components/ChainlinkPriceFeeds';
+import SyntheticPropertyExplainer from '@/components/SyntheticPropertyExplainer';
+import ContractSetup from '@/components/ContractSetup';
 
 type TabType = 'overview' | 'properties' | 'portfolio' | 'analytics';
 
@@ -12,8 +19,6 @@ const Home: React.FC = () => {
   const { address, isConnected } = useAccount();
   const [mounted, setMounted] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [selectedProperty, setSelectedProperty] = useState<number>(0);
-  const [investmentAmount, setInvestmentAmount] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -21,62 +26,28 @@ const Home: React.FC = () => {
   }, []);
 
   // Read total supply of property tokens
-  const { data: totalSupply, refetch: refetchSupply } = useContractRead({
+  const { data: totalSupply, refetch: refetchSupply } = useReadContract({
     address: CONTRACT_CONFIG.PropertyToken.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.PropertyToken.abi as any,
+    abi: CONTRACT_CONFIG.PropertyToken.abi,
     functionName: 'totalSupply',
-    watch: true,
   });
 
   // Read synthetic property token balance
-  const { data: syntheticBalance, refetch: refetchSynthetic } = useContractRead({
+  const { data: syntheticBalance, refetch: refetchSynthetic } = useReadContract({
     address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi,
     functionName: 'balanceOf',
     args: [address],
-    enabled: !!address,
-    watch: true,
-  });
-
-  // Read synthetic property token name
-  const { data: syntheticName } = useContractRead({
-    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
-    functionName: 'name',
-    watch: true,
+    query: {
+      enabled: !!address,
+    },
   });
 
   // Read synthetic property token symbol
-  const { data: syntheticSymbol } = useContractRead({
+  const { data: syntheticSymbol } = useReadContract({
     address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
+    abi: CONTRACT_CONFIG.SyntheticProperty.abi,
     functionName: 'symbol',
-    watch: true,
-  });
-
-  // Contract write for synthetic property investment
-  const { config: investConfig } = usePrepareContractWrite({
-    address: CONTRACT_CONFIG.SyntheticProperty.address as `0x${string}`,
-    abi: CONTRACT_CONFIG.SyntheticProperty.abi as any,
-    functionName: 'mint',
-    args: investmentAmount ? [parseEther(investmentAmount)] : undefined,
-    value: investmentAmount ? parseEther(investmentAmount) : undefined,
-    enabled: Boolean(investmentAmount && parseFloat(investmentAmount) > 0),
-  });
-
-  const { write: invest, isLoading: isInvesting } = useContractWrite({
-    ...investConfig,
-    onSuccess: () => {
-      toast.success('Investment successful! 🏡');
-      setInvestmentAmount('');
-      setTimeout(() => {
-        refetchSynthetic();
-        refetchSupply();
-      }, 2000);
-    },
-    onError: (error: Error) => {
-      toast.error(`Investment failed: ${error.message}`);
-    },
   });
 
   if (!mounted) return null;
@@ -89,7 +60,12 @@ const Home: React.FC = () => {
   ];
 
   const syntheticBalanceFormatted = syntheticBalance ? formatEther(syntheticBalance as unknown as bigint) : '0';
-  const totalSupplyFormatted = totalSupply ? (totalSupply as bigint).toString() : '0';
+  const totalSupplyFormatted = totalSupply ? String(totalSupply) : '0';
+
+  const handleInvestmentSuccess = () => {
+    refetchSynthetic();
+    refetchSupply();
+  };
 
   return (
     <>
@@ -186,19 +162,21 @@ const Home: React.FC = () => {
                 </p>
               </div>
 
-              {/* Contract Status Cards */}
+              {/* Platform Stats */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-600">Property Tokens</p>
-                      <p className="text-2xl font-bold text-gray-900">{totalSupplyFormatted}</p>
+                      <p className="text-2xl font-bold text-gray-900 truncate" title={totalSupplyFormatted}>
+                        {totalSupplyFormatted}
+                      </p>
+                      <p className="text-xs text-gray-500">Total minted</p>
                     </div>
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                       <span className="text-green-600 text-xl">🏠</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Total tokenized properties</p>
                 </div>
 
                 <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
@@ -206,134 +184,174 @@ const Home: React.FC = () => {
                     <div>
                       <p className="text-sm font-medium text-gray-600">Your Balance</p>
                       <p className="text-2xl font-bold text-gray-900">
-                        {parseFloat(syntheticBalanceFormatted).toFixed(2)}
+                        {isConnected ? syntheticBalanceFormatted : '0'}
                       </p>
+                      <p className="text-xs text-gray-500">{String(syntheticSymbol || 'Tokens')}</p>
                     </div>
                     <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <span className="text-blue-600 text-xl">💎</span>
+                      <span className="text-blue-600 text-xl">💰</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">{syntheticSymbol || 'sDREMS'} tokens</p>
-                </div>
-
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Automation</p>
-                      <p className="text-2xl font-bold text-green-600">Active</p>
-                    </div>
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                      <span className="text-green-600 text-xl">⚡</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">Chainlink Automation</p>
                 </div>
 
                 <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Network</p>
-                      <p className="text-2xl font-bold text-orange-600">Fuji</p>
+                      <p className="text-2xl font-bold text-gray-900">Fuji</p>
+                      <p className="text-xs text-gray-500">Avalanche Testnet</p>
                     </div>
-                    <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <span className="text-orange-600 text-xl">🔗</span>
+                    <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <span className="text-purple-600 text-xl">⛰️</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Avalanche Testnet</p>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Status</p>
+                      <p className="text-2xl font-bold text-green-900">Live</p>
+                      <p className="text-xs text-gray-500">All systems operational</p>
+                    </div>
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                      <span className="text-green-600 text-xl">✅</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Contract Addresses */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Deployed Contracts</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-600">PropertyToken</p>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
-                      {CONTRACT_CONFIG.PropertyToken.address}
-                    </p>
+              {/* Platform Architecture */}
+              <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+                <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">🏗️ Platform Architecture</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200">
+                    <div className="w-16 h-16 bg-green-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-green-600 text-2xl">🏠</span>
+                    </div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Property Tokenization</h4>
+                    <p className="text-sm text-gray-600">Convert real estate into ERC-20 tokens with collateral backing</p>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-600">SyntheticProperty</p>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
-                      {CONTRACT_CONFIG.SyntheticProperty.address}
-                    </p>
+                  
+                  <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
+                    <div className="w-16 h-16 bg-blue-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-blue-600 text-2xl">🌉</span>
+                    </div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Cross-Chain Bridge</h4>
+                    <p className="text-sm text-gray-600">CCIP-powered bridging across Ethereum, Arbitrum, and Optimism</p>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-600">PropertyAutomation</p>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
-                      {CONTRACT_CONFIG.PropertyAutomation.address}
-                    </p>
+                  
+                  <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
+                    <div className="w-16 h-16 bg-purple-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-purple-600 text-2xl">🤖</span>
+                    </div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Automated Management</h4>
+                    <p className="text-sm text-gray-600">Chainlink Automation for rent collection and maintenance</p>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-600">PropertyBridge</p>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
-                      {CONTRACT_CONFIG.PropertyBridge.address}
-                    </p>
+                  
+                  <div className="text-center p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl border border-yellow-200">
+                    <div className="w-16 h-16 bg-yellow-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-yellow-600 text-2xl">📊</span>
+                    </div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Synthetic Assets</h4>
+                    <p className="text-sm text-gray-600">Liquid ERC-20 tokens representing real estate ownership</p>
                   </div>
                 </div>
               </div>
+
+              {/* Smart Contract Ecosystem */}
+              <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+                <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">⚙️ Smart Contract Ecosystem</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-6 border border-indigo-200">
+                    <div className="flex items-center mb-4">
+                      <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-indigo-600">🏦</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900">PropertyToken</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">Core ERC-20 contract managing property investments with collateral requirements</p>
+                    <div className="text-xs text-indigo-700 bg-indigo-100 px-2 py-1 rounded">
+                      Investment • Collateral • Minting
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg p-6 border border-teal-200">
+                    <div className="flex items-center mb-4">
+                      <div className="w-10 h-10 bg-teal-200 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-teal-600">🤖</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900">PropertyAutomation</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">Chainlink Automation for rent collection, maintenance scheduling, and portfolio rebalancing</p>
+                    <div className="text-xs text-teal-700 bg-teal-100 px-2 py-1 rounded">
+                      Automation • Scheduling • Management
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-lg p-6 border border-rose-200">
+                    <div className="flex items-center mb-4">
+                      <div className="w-10 h-10 bg-rose-200 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-rose-600">🌉</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900">PropertyBridge</h4>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">CCIP-enabled cross-chain bridge for moving property tokens between networks</p>
+                    <div className="text-xs text-rose-700 bg-rose-100 px-2 py-1 rounded">
+                      CCIP • Cross-Chain • Bridging
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Getting Started */}
+              <div className="bg-gradient-to-r from-green-600 to-blue-600 rounded-xl p-8 text-white">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold mb-4">🚀 Ready to Get Started?</h3>
+                  <p className="text-lg mb-6 opacity-90">
+                    Begin your real estate investment journey with tokenized properties
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button
+                      onClick={() => setActiveTab('properties')}
+                      className="px-6 py-3 bg-white text-green-600 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                    >
+                      Browse Properties
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('portfolio')}
+                      className="px-6 py-3 bg-white/20 text-white rounded-lg font-semibold hover:bg-white/30 transition-colors border border-white/30"
+                    >
+                      View Portfolio
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Synthetic Property System Explainer */}
+              <SyntheticPropertyExplainer />
             </div>
           )}
 
           {/* Properties Tab */}
           {activeTab === 'properties' && (
             <div className="space-y-8">
-              <div className="text-center space-y-4">
-                <h2 className="text-3xl font-bold text-gray-900">Available Properties</h2>
-                <p className="text-lg text-gray-600">Invest in tokenized real estate with synthetic tokens</p>
+              <div className="text-center">
+                <h2 className="text-3xl font-bold text-gray-900">Real Estate Properties</h2>
+                <p className="text-gray-600 mt-2">
+                  Invest in tokenized real estate and manage cross-chain property transfers
+                </p>
               </div>
 
-              {/* Sample Investment Interface */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Invest in Synthetic Property Tokens</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Investment Amount (AVAX)
-                      </label>
-                      <input
-                        type="number"
-                        value={investmentAmount}
-                        onChange={(e) => setInvestmentAmount(e.target.value)}
-                        placeholder="0.1"
-                        step="0.01"
-                        min="0"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      />
-                    </div>
-                    
-                    <button
-                      onClick={() => invest?.()}
-                      disabled={!invest || isInvesting || !isConnected}
-                      className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-                    >
-                      {isInvesting ? 'Investing...' : 'Invest in Property Tokens'}
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">You will receive:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {investmentAmount || '0'} {syntheticSymbol || 'sDREMS'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Token Name:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {syntheticName || 'Synthetic DREMS Property'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Your Balance:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {parseFloat(syntheticBalanceFormatted).toFixed(4)} {syntheticSymbol || 'sDREMS'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              {/* Contract Setup - Show first */}
+              <ContractSetup />
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Investment Section */}
+                <PropertyInvestment onSuccess={handleInvestmentSuccess} />
+                
+                {/* Cross-Chain Bridge Section */}
+                <PropertyBridge />
               </div>
             </div>
           )}
@@ -341,95 +359,60 @@ const Home: React.FC = () => {
           {/* Portfolio Tab */}
           {activeTab === 'portfolio' && (
             <div className="space-y-8">
-              <div className="text-center space-y-4">
+              <div className="text-center">
                 <h2 className="text-3xl font-bold text-gray-900">Your Portfolio</h2>
-                <p className="text-lg text-gray-600">Manage your real estate investments</p>
+                <p className="text-gray-600 mt-2">Track your real estate investments and cross-chain activities</p>
               </div>
-
-              {!isConnected ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-gray-400 text-2xl">👛</span>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Connect Your Wallet</h3>
-                  <p className="text-gray-600 mb-4">Connect your wallet to view your portfolio</p>
-                  <ConnectButton />
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Holdings</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                      <div>
-                        <p className="font-medium text-gray-900">{syntheticName || 'Synthetic DREMS Property'}</p>
-                        <p className="text-sm text-gray-600">Property Token Balance</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium text-gray-900">
-                          {parseFloat(syntheticBalanceFormatted).toFixed(4)}
-                        </p>
-                        <p className="text-sm text-gray-600">{syntheticSymbol || 'sDREMS'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              
+              <div className="space-y-8">
+                {/* Portfolio Overview */}
+                <PropertyPortfolio />
+                
+                {/* Property Automation Status */}
+                <PropertyAutomationStatus />
+                
+                {/* Bridge History */}
+                <BridgeHistory />
+              </div>
             </div>
           )}
 
           {/* Analytics Tab */}
           {activeTab === 'analytics' && (
             <div className="space-y-8">
-              <div className="text-center space-y-4">
-                <h2 className="text-3xl font-bold text-gray-900">Platform Analytics</h2>
-                <p className="text-lg text-gray-600">Real-time platform metrics and insights</p>
+              <div className="text-center">
+                <h2 className="text-3xl font-bold text-gray-900">Market Analytics</h2>
+                <p className="text-gray-600 mt-2">Real-time market insights and Chainlink data feeds</p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Stats</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Properties:</span>
-                      <span className="font-medium">{totalSupplyFormatted}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Active Automation:</span>
-                      <span className="font-medium text-green-600">✓ Active</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Network:</span>
-                      <span className="font-medium">Avalanche Fuji</span>
-                    </div>
+              
+              {/* Chainlink Price Feeds */}
+              <ChainlinkPriceFeeds />
+              
+              {/* Property Automation Analytics */}
+              <PropertyAutomationStatus />
+              
+              {/* Future Analytics Placeholder */}
+              <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-blue-600 text-2xl">📈</span>
                   </div>
-                </div>
-
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Activity</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Token Balance:</span>
-                      <span className="font-medium">{parseFloat(syntheticBalanceFormatted).toFixed(4)}</span>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Advanced Analytics Coming Soon</h3>
+                  <p className="text-gray-500 mb-4">
+                    Additional analytics features are being developed
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <h4 className="font-medium mb-1">Property Performance</h4>
+                      <p className="text-xs">ROI tracking and yield analysis</p>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Wallet:</span>
-                      <span className="font-medium text-xs">
-                        {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not connected'}
-                      </span>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <h4 className="font-medium mb-1">Market Trends</h4>
+                      <p className="text-xs">Real estate market indicators</p>
                     </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Contract Info</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <span className="text-gray-600 block text-sm">Synthetic Token:</span>
-                      <span className="font-medium text-xs">{syntheticSymbol || 'sDREMS'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600 block text-sm">Token Name:</span>
-                      <span className="font-medium text-xs">{syntheticName || 'Loading...'}</span>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <h4 className="font-medium mb-1">Risk Metrics</h4>
+                      <p className="text-xs">Collateral ratios and liquidation risks</p>
                     </div>
                   </div>
                 </div>
@@ -437,6 +420,41 @@ const Home: React.FC = () => {
             </div>
           )}
         </main>
+
+        {/* Footer */}
+        <footer className="bg-white border-t border-gray-200 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center text-gray-500">
+              <p className="mb-2">DREMS Platform - Powered by Chainlink & Avalanche</p>
+              <div className="flex justify-center space-x-6 text-sm">
+                <a 
+                  href="https://testnet.snowtrace.io" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-700"
+                >
+                  Snowtrace Explorer
+                </a>
+                <a 
+                  href="https://faucet.avax.network" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-700"
+                >
+                  AVAX Faucet
+                </a>
+                <a 
+                  href="https://chain.link" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-700"
+                >
+                  Chainlink
+                </a>
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
     </>
   );

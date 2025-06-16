@@ -1,5 +1,4 @@
-import { usePublicClient, useWalletClient } from 'wagmi';
-import { getContract } from 'viem';
+import { useAccount, useReadContract, useWriteContract, useSimulateContract } from 'wagmi';
 import { 
   CONTRACT_ADDRESSES, 
   PropertyTokenABI, 
@@ -11,117 +10,96 @@ import {
 
 // Custom hook for DREMS contract interactions
 export function useContracts() {
-  const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
-
-  // Property Token Contract
-  const propertyToken = getContract({
-    address: CONTRACT_ADDRESSES.PropertyToken as `0x${string}`,
-    abi: PropertyTokenABI.abi,
-    client: walletClient || publicClient,
-  });
-
-  // Property Automation Contract
-  const propertyAutomation = getContract({
-    address: CONTRACT_ADDRESSES.PropertyAutomation as `0x${string}`,
-    abi: PropertyAutomationABI.abi,
-    client: walletClient || publicClient,
-  });
-
-  // Property Bridge Contract
-  const propertyBridge = getContract({
-    address: CONTRACT_ADDRESSES.PropertyBridge as `0x${string}`,
-    abi: PropertyBridgeABI.abi,
-    client: walletClient || publicClient,
-  });
-
-  // Synthetic Property Contract
-  const syntheticProperty = getContract({
-    address: CONTRACT_ADDRESSES.SyntheticProperty as `0x${string}`,
-    abi: SyntheticPropertyABI.abi,
-    client: walletClient || publicClient,
-  });
+  const propertyToken = usePropertyToken();
+  const syntheticProperty = useSyntheticProperty();
+  const propertyAutomation = usePropertyAutomation();
+  const propertyBridge = usePropertyBridge();
 
   return {
     propertyToken,
+    syntheticProperty,
     propertyAutomation,
     propertyBridge,
-    syntheticProperty,
-    contracts: {
-      PropertyToken: propertyToken,
-      PropertyAutomation: propertyAutomation,
-      PropertyBridge: propertyBridge,
-      SyntheticProperty: syntheticProperty,
-    },
   };
 }
 
 // Hook for individual contract access
 export function useContract(contractName: ContractName) {
   const contracts = useContracts();
-  return contracts.contracts[contractName];
+  
+  switch (contractName) {
+    case 'PropertyToken':
+      return contracts.propertyToken;
+    case 'SyntheticProperty':
+      return contracts.syntheticProperty;
+    case 'PropertyAutomation':
+      return contracts.propertyAutomation;
+    case 'PropertyBridge':
+      return contracts.propertyBridge;
+    default:
+      throw new Error(`Unknown contract: ${contractName}`);
+  }
 }
 
 // Property Token specific hooks
 export function usePropertyToken() {
-  const { propertyToken } = useContracts();
+  const { address } = useAccount();
 
-  const registerProperty = async (
-    propertyAddress: string,
-    propertyId: string,
-    physicalAddress: string,
-    propertyType: number,
-    initialValue: string,
-    totalTokens: string,
-    expectedYield: number,
-    monthlyRent: string,
-    propertyManager: string
-  ) => {
-    if (!propertyToken) throw new Error('PropertyToken contract not available');
-    
-    return await propertyToken.write.registerProperty([
-      propertyAddress as `0x${string}`,
-      propertyId,
-      physicalAddress,
-      propertyType,
-      BigInt(initialValue),
-      BigInt(totalTokens),
-      expectedYield,
-      BigInt(monthlyRent),
-      propertyManager as `0x${string}`,
-    ]);
-  };
+  // Register Property using Wagmi V2
+  const { writeContract: registerProperty, isPending: isRegisterLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Property registered successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('Property registration failed:', error);
+      },
+    },
+  });
 
-  const investInProperty = async (propertyAddress: string, amount: string) => {
-    if (!propertyToken) throw new Error('PropertyToken contract not available');
-    
-    return await propertyToken.write.investInProperty([
-      propertyAddress as `0x${string}`,
-      BigInt(amount)
-    ], {
-      value: BigInt(amount),
+  // Invest in Property using Wagmi V2
+  const { writeContract: investInProperty, isPending: isInvestLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Investment successful:', data);
+      },
+      onError: (error: any) => {
+        console.error('Investment failed:', error);
+      },
+    },
+  });
+
+  // Get Property Info
+  const getPropertyInfo = (propertyAddress: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.PropertyToken as `0x${string}`,
+      abi: PropertyTokenABI.abi,
+      functionName: 'getProperty',
+      args: [propertyAddress as `0x${string}`],
+      query: {
+        enabled: !!propertyAddress,
+      },
     });
   };
 
-  const getPropertyInfo = async (propertyAddress: string) => {
-    if (!propertyToken) throw new Error('PropertyToken contract not available');
-    
-    return await propertyToken.read.getProperty([propertyAddress as `0x${string}`]);
-  };
-
-  const getUserInvestment = async (user: string, propertyAddress: string) => {
-    if (!propertyToken) throw new Error('PropertyToken contract not available');
-    
-    return await propertyToken.read.getUserPropertyBalance([
-      user as `0x${string}`, 
-      propertyAddress as `0x${string}`
-    ]);
+  // Get User Investment
+  const getUserInvestment = (user: string, propertyAddress: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.PropertyToken as `0x${string}`,
+      abi: PropertyTokenABI.abi,
+      functionName: 'getUserPropertyBalance',
+      args: [user as `0x${string}`, propertyAddress as `0x${string}`],
+      query: {
+        enabled: !!user && !!propertyAddress,
+      },
+    });
   };
 
   return {
-    contract: propertyToken,
     registerProperty,
+    isRegisterLoading,
     investInProperty,
+    isInvestLoading,
     getPropertyInfo,
     getUserInvestment,
   };
@@ -129,121 +107,148 @@ export function usePropertyToken() {
 
 // Synthetic Property specific hooks
 export function useSyntheticProperty() {
-  const { syntheticProperty } = useContracts();
+  const { address } = useAccount();
 
-  const mintSynthetic = async (
-    propertyToken: string,
-    collateralAmount: string,
-    syntheticAmount: string
-  ) => {
-    if (!syntheticProperty) throw new Error('SyntheticProperty contract not available');
-    
-    return await syntheticProperty.write.mintSynthetic([
-      propertyToken as `0x${string}`,
-      BigInt(collateralAmount),
-      BigInt(syntheticAmount),
-    ], { value: BigInt(collateralAmount) });
+  // Mint Synthetic using Wagmi V2
+  const { writeContract: mintSynthetic, isPending: isMintLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Synthetic token minted successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('Synthetic token minting failed:', error);
+      },
+    },
+  });
+
+  // Burn Synthetic using Wagmi V2
+  const { writeContract: burnSynthetic, isPending: isBurnLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Synthetic token burned successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('Synthetic token burning failed:', error);
+      },
+    },
+  });
+
+  // Get Position
+  const getPosition = (user: string, propertyToken: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.SyntheticProperty as `0x${string}`,
+      abi: SyntheticPropertyABI.abi,
+      functionName: 'getPosition',
+      args: [user as `0x${string}`, propertyToken as `0x${string}`],
+      query: {
+        enabled: !!user && !!propertyToken,
+      },
+    });
   };
 
-  const burnSynthetic = async (
-    propertyToken: string,
-    syntheticAmount: string
-  ) => {
-    if (!syntheticProperty) throw new Error('SyntheticProperty contract not available');
-    
-    return await syntheticProperty.write.burnSynthetic([
-      propertyToken as `0x${string}`, 
-      BigInt(syntheticAmount)
-    ]);
+  // Get balance
+  const getBalance = (user: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.SyntheticProperty as `0x${string}`,
+      abi: SyntheticPropertyABI.abi,
+      functionName: 'balanceOf',
+      args: [user as `0x${string}`],
+      query: {
+        enabled: !!user,
+      },
+    });
   };
 
-  const getPosition = async (user: string, propertyToken: string) => {
-    if (!syntheticProperty) throw new Error('SyntheticProperty contract not available');
-    
-    return await syntheticProperty.read.getPosition([
-      user as `0x${string}`, 
-      propertyToken as `0x${string}`
-    ]);
+  // Get token name
+  const getName = () => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.SyntheticProperty as `0x${string}`,
+      abi: SyntheticPropertyABI.abi,
+      functionName: 'name',
+    });
   };
 
-  const liquidatePosition = async (user: string, propertyToken: string) => {
-    if (!syntheticProperty) throw new Error('SyntheticProperty contract not available');
-    
-    return await syntheticProperty.write.liquidatePosition([
-      user as `0x${string}`, 
-      propertyToken as `0x${string}`
-    ]);
+  // Get token symbol
+  const getSymbol = () => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.SyntheticProperty as `0x${string}`,
+      abi: SyntheticPropertyABI.abi,
+      functionName: 'symbol',
+    });
   };
 
   return {
-    contract: syntheticProperty,
     mintSynthetic,
+    isMintLoading,
     burnSynthetic,
+    isBurnLoading,
     getPosition,
-    liquidatePosition,
+    getBalance,
+    getName,
+    getSymbol,
   };
 }
 
 // Property Automation specific hooks
 export function usePropertyAutomation() {
-  const { propertyAutomation } = useContracts();
+  const { writeContract: registerForAutomation, isPending: isRegisterLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Property registered for automation successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('Property automation registration failed:', error);
+      },
+    },
+  });
 
-  const registerForAutomation = async (
-    propertyAddress: string,
-    rentCollectionInterval?: number,
-    valuationInterval?: number,
-    maintenanceInterval?: number
-  ) => {
-    if (!propertyAutomation) throw new Error('PropertyAutomation contract not available');
-    
-    return await propertyAutomation.write.registerPropertyForAutomation([
-      propertyAddress as `0x${string}`,
-      rentCollectionInterval || 0,
-      valuationInterval || 0,
-      maintenanceInterval || 0,
-    ]);
-  };
-
-  const getAutomationInfo = async (propertyAddress: string) => {
-    if (!propertyAutomation) throw new Error('PropertyAutomation contract not available');
-    
-    return await propertyAutomation.read.getAutomationInfo([propertyAddress as `0x${string}`]);
+  const getAutomationInfo = (propertyAddress: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.PropertyAutomation as `0x${string}`,
+      abi: PropertyAutomationABI.abi,
+      functionName: 'getAutomationInfo',
+      args: [propertyAddress as `0x${string}`],
+      query: {
+        enabled: !!propertyAddress,
+      },
+    });
   };
 
   return {
-    contract: propertyAutomation,
     registerForAutomation,
+    isRegisterLoading,
     getAutomationInfo,
   };
 }
 
 // Property Bridge specific hooks
 export function usePropertyBridge() {
-  const { propertyBridge } = useContracts();
+  const { writeContract: sendCrossChainMessage, isPending: isSendLoading } = useWriteContract({
+    mutation: {
+      onSuccess: (data: any) => {
+        console.log('Cross-chain message sent successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('Cross-chain message failed:', error);
+      },
+    },
+  });
 
-  const sendCrossChainMessage = async (
-    destinationChainSelector: string,
-    message: string,
-    gasLimit: number
-  ) => {
-    if (!propertyBridge) throw new Error('PropertyBridge contract not available');
-    
-    return await propertyBridge.write.sendCrossChainMessage([
-      BigInt(destinationChainSelector),
-      message,
-      gasLimit,
-    ]);
-  };
-
-  const getChainConfig = async (chainSelector: string) => {
-    if (!propertyBridge) throw new Error('PropertyBridge contract not available');
-    
-    return await propertyBridge.read.getChainConfig([BigInt(chainSelector)]);
+  const getChainConfig = (chainSelector: string) => {
+    return useReadContract({
+      address: CONTRACT_ADDRESSES.PropertyBridge as `0x${string}`,
+      abi: PropertyBridgeABI.abi,
+      functionName: 'getChainConfig',
+      args: [BigInt(chainSelector)],
+      query: {
+        enabled: !!chainSelector,
+      },
+    });
   };
 
   return {
-    contract: propertyBridge,
     sendCrossChainMessage,
+    isSendLoading,
     getChainConfig,
   };
 } 
