@@ -18,10 +18,10 @@ const nextConfig = {
   ],
 
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
-    // Handle web workers
+    // Ignore problematic worker files during build
     config.module.rules.push({
-      test: /\.worker\.js$/,
-      use: { loader: 'worker-loader' },
+      test: /HeartbeatWorker\.js$/,
+      use: 'null-loader',
     });
 
     // Handle ESM modules
@@ -49,6 +49,24 @@ const nextConfig = {
         path: false,
       };
     }
+
+    // Disable optimization for problematic files
+    config.optimization = {
+      ...config.optimization,
+      minimizer: config.optimization.minimizer.map((minimizer) => {
+        if (minimizer.options && minimizer.options.terserOptions) {
+          minimizer.options.terserOptions.format = {
+            ...minimizer.options.terserOptions.format,
+            comments: false,
+          };
+          minimizer.options.terserOptions.compress = {
+            ...minimizer.options.terserOptions.compress,
+            drop_console: false,
+          };
+        }
+        return minimizer;
+      }),
+    };
 
     return config;
   },
